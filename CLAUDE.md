@@ -10,11 +10,25 @@
 
 ```
 One-Click-Publishing-/
-├── CLAUDE.md          # This file — AI assistant guidance
-└── .git/              # Git metadata
+├── proto/                        # 공유 Protobuf 정의
+│   └── user.proto
+├── python-user-service/          # Python gRPC 서버 (User Service)
+│   ├── server.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── nodejs-api-gateway/           # Node.js REST API 게이트웨이
+│   ├── src/
+│   │   ├── index.js
+│   │   └── grpcClient.js
+│   ├── package.json
+│   └── Dockerfile
+├── docker-compose.yml            # 서비스 오케스트레이션
+├── README.md                     # 프로젝트 문서
+├── CLAUDE.md                     # AI assistant guidance
+└── .git/
 ```
 
-> This repository is newly initialized. As the project grows, update this section to reflect the actual directory layout, tech stack, and architecture.
+**Tech stack:** Python 3.12 (grpcio), Node.js 20 (Express + @grpc/grpc-js), Protobuf, Docker Compose
 
 ## Development Workflow
 
@@ -77,22 +91,19 @@ When working in this repository:
 
 ## Build & Run Commands
 
-> To be populated once the project has build tooling. Example format:
->
-> | Command | Description |
-> |---------|-------------|
-> | `npm install` | Install dependencies |
-> | `npm run dev` | Start development server |
-> | `npm run build` | Production build |
-> | `npm test` | Run test suite |
-> | `npm run lint` | Run linter |
+| Command | Description |
+|---------|-------------|
+| `docker compose up --build` | 전체 서비스 빌드 및 실행 |
+| `docker compose down` | 전체 서비스 중지 |
+| `cd python-user-service && pip install -r requirements.txt` | Python 의존성 설치 |
+| `cd nodejs-api-gateway && npm install` | Node.js 의존성 설치 |
 
 ## Environment & Configuration
 
-> To be populated. Document:
-> - Required environment variables
-> - Configuration files and their purpose
-> - External service dependencies
+| Variable | Service | Default | Description |
+|----------|---------|---------|-------------|
+| `USER_SERVICE_HOST` | api-gateway | `localhost:50051` | Python gRPC 서버 주소 |
+| `PORT` | api-gateway | `3000` | REST API 포트 |
 
 ## Troubleshooting
 

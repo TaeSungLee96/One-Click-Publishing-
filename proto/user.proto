@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package user;
+
+// 사용자 서비스 정의
+service UserService {
+  // 사용자 생성
+  rpc CreateUser (CreateUserRequest) returns (UserResponse);
+  // 사용자 조회
+  rpc GetUser (GetUserRequest) returns (UserResponse);
+  // 전체 사용자 목록 조회
+  rpc ListUsers (ListUsersRequest) returns (ListUsersResponse);
+  // 사용자 삭제
+  rpc DeleteUser (DeleteUserRequest) returns (DeleteUserResponse);
+}
+
+message CreateUserRequest {
+  string name = 1;
+  string email = 2;
+}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message ListUsersRequest {}
+
+message DeleteUserRequest {
+  string id = 1;
+}
+
+message UserResponse {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+  string created_at = 4;
+}
+
+message ListUsersResponse {
+  repeated UserResponse users = 1;
+}
+
+message DeleteUserResponse {
+  bool success = 1;
+  string message = 2;
+}

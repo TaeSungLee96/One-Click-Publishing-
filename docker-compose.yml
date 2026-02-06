@@ -1,0 +1,27 @@
+services:
+  # Python gRPC 서버 - 사용자 관리 서비스
+  user-service:
+    build:
+      context: .
+      dockerfile: python-user-service/Dockerfile
+    ports:
+      - "50051:50051"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import grpc; ch = grpc.insecure_channel('localhost:50051'); grpc.channel_ready_future(ch).result(timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Node.js REST API 게이트웨이 - gRPC 클라이언트
+  api-gateway:
+    build:
+      context: .
+      dockerfile: nodejs-api-gateway/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - USER_SERVICE_HOST=user-service:50051
+      - PORT=3000
+    depends_on:
+      user-service:
+        condition: service_healthy
