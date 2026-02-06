@@ -1,0 +1,177 @@
+name: Deploy to Oracle Cloud
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # OCIR (Oracle Cloud Infrastructure Registry) 설정
+  OCI_REGION: ${{ vars.OCI_REGION }}                       # 예: ap-chuncheon-1
+  OCIR_ENDPOINT: ${{ vars.OCI_REGION }}.ocir.io
+  OCIR_NAMESPACE: ${{ vars.OCIR_NAMESPACE }}               # OCI tenancy namespace
+  OCIR_REPO_PREFIX: ${{ vars.OCIR_REPO_PREFIX || 'one-click-publishing' }}
+
+jobs:
+  # ──────────────────────────────────────────────
+  # 1단계: Docker 이미지 빌드 → OCIR 푸시
+  # ──────────────────────────────────────────────
+  build-and-push:
+    name: Build & Push to OCIR
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to OCIR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.OCIR_ENDPOINT }}
+          username: ${{ env.OCIR_NAMESPACE }}/${{ secrets.OCI_USERNAME }}
+          password: ${{ secrets.OCI_AUTH_TOKEN }}
+
+      - name: Build & push user-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: python-user-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.OCIR_ENDPOINT }}/${{ env.OCIR_NAMESPACE }}/${{ env.OCIR_REPO_PREFIX }}/user-service:${{ steps.meta.outputs.tag }}
+            ${{ env.OCIR_ENDPOINT }}/${{ env.OCIR_NAMESPACE }}/${{ env.OCIR_REPO_PREFIX }}/user-service:latest
+
+      - name: Build & push api-gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: nodejs-api-gateway/Dockerfile
+          push: true
+          tags: |
+            ${{ env.OCIR_ENDPOINT }}/${{ env.OCIR_NAMESPACE }}/${{ env.OCIR_REPO_PREFIX }}/api-gateway:${{ steps.meta.outputs.tag }}
+            ${{ env.OCIR_ENDPOINT }}/${{ env.OCIR_NAMESPACE }}/${{ env.OCIR_REPO_PREFIX }}/api-gateway:latest
+
+  # ──────────────────────────────────────────────
+  # 2단계 (옵션 A): OCI Compute에 Docker Compose로 배포
+  # ──────────────────────────────────────────────
+  deploy-compute:
+    name: Deploy to OCI Compute
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: vars.DEPLOY_TARGET == 'compute'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate production docker-compose
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          cat > docker-compose.prod.yml << YAML
+          services:
+            user-service:
+              image: ${OCIR_ENDPOINT}/${OCIR_NAMESPACE}/${OCIR_REPO_PREFIX}/user-service:${IMAGE_TAG}
+              ports:
+                - "50051:50051"
+              restart: unless-stopped
+              healthcheck:
+                test: ["CMD", "python", "-c", "import grpc; ch = grpc.insecure_channel('localhost:50051'); grpc.channel_ready_future(ch).result(timeout=2)"]
+                interval: 10s
+                timeout: 5s
+                retries: 3
+
+            api-gateway:
+              image: ${OCIR_ENDPOINT}/${OCIR_NAMESPACE}/${OCIR_REPO_PREFIX}/api-gateway:${IMAGE_TAG}
+              ports:
+                - "3000:3000"
+              environment:
+                - USER_SERVICE_HOST=user-service:50051
+                - PORT=3000
+              depends_on:
+                user-service:
+                  condition: service_healthy
+              restart: unless-stopped
+          YAML
+
+      - name: Copy files to OCI Compute
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.OCI_COMPUTE_HOST }}
+          username: ${{ secrets.OCI_COMPUTE_USER }}
+          key: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+          source: "docker-compose.prod.yml"
+          target: "~/app"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          OCIR_ENDPOINT: ${{ env.OCIR_ENDPOINT }}
+          OCIR_NAMESPACE: ${{ env.OCIR_NAMESPACE }}
+          OCI_USERNAME: ${{ secrets.OCI_USERNAME }}
+          OCI_AUTH_TOKEN: ${{ secrets.OCI_AUTH_TOKEN }}
+        with:
+          host: ${{ secrets.OCI_COMPUTE_HOST }}
+          username: ${{ secrets.OCI_COMPUTE_USER }}
+          key: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+          envs: OCIR_ENDPOINT,OCIR_NAMESPACE,OCI_USERNAME,OCI_AUTH_TOKEN
+          script: |
+            # OCIR 로그인
+            echo "$OCI_AUTH_TOKEN" | docker login "$OCIR_ENDPOINT" \
+              -u "$OCIR_NAMESPACE/$OCI_USERNAME" --password-stdin
+
+            cd ~/app
+
+            # 새 이미지 Pull & 재시작
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # 사용하지 않는 이미지 정리
+            docker image prune -f
+
+            # 배포 확인
+            echo "=== 배포 완료 ==="
+            docker compose -f docker-compose.prod.yml ps
+
+  # ──────────────────────────────────────────────
+  # 2단계 (옵션 B): OKE (Kubernetes)에 배포
+  # ──────────────────────────────────────────────
+  deploy-oke:
+    name: Deploy to OKE
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: vars.DEPLOY_TARGET == 'oke'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure OCI CLI
+        uses: oracle-actions/configure-kubectl-oke@v1.5.1
+        with:
+          cluster: ${{ secrets.OKE_CLUSTER_OCID }}
+          region: ${{ vars.OCI_REGION }}
+          tenancy: ${{ secrets.OCI_TENANCY_OCID }}
+          user: ${{ secrets.OCI_USER_OCID }}
+          fingerprint: ${{ secrets.OCI_FINGERPRINT }}
+          private_key: ${{ secrets.OCI_API_PRIVATE_KEY }}
+
+      - name: Deploy to OKE
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          # 이미지 태그 치환 후 적용
+          sed "s|IMAGE_TAG_PLACEHOLDER|${IMAGE_TAG}|g" k8s/deployment.yml | \
+          sed "s|OCIR_ENDPOINT_PLACEHOLDER|${OCIR_ENDPOINT}|g" | \
+          sed "s|OCIR_NAMESPACE_PLACEHOLDER|${OCIR_NAMESPACE}|g" | \
+          sed "s|OCIR_REPO_PREFIX_PLACEHOLDER|${OCIR_REPO_PREFIX}|g" | \
+          kubectl apply -f -
+
+          kubectl apply -f k8s/service.yml
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/user-service --timeout=120s
+          kubectl rollout status deployment/api-gateway --timeout=120s
+          echo "=== 배포 완료 ==="
+          kubectl get pods -l app.kubernetes.io/part-of=one-click-publishing

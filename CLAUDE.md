@@ -33,13 +33,22 @@ One-Click-Publishing-/
 │   ├── tsconfig.json
 │   ├── nest-cli.json
 │   └── Dockerfile
-├── docker-compose.yml            # 서비스 오케스트레이션
+├── k8s/                          # Kubernetes 매니페스트 (OKE용)
+│   ├── deployment.yml
+│   └── service.yml
+├── .github/workflows/            # GitHub Actions CI/CD
+│   ├── ci.yml                    # 빌드 검증
+│   └── deploy.yml                # Oracle Cloud 배포
+├── scripts/
+│   └── setup-oci-secrets.sh      # GitHub Secrets 설정 도우미
+├── .env.deploy.example           # OCI 배포 설정 템플릿
+├── docker-compose.yml            # 로컬 서비스 오케스트레이션
 ├── README.md                     # 프로젝트 문서
 ├── CLAUDE.md                     # AI assistant guidance
 └── .git/
 ```
 
-**Tech stack:** Python 3.12 (grpcio), Node.js 20 (NestJS 10 + TypeScript + @nestjs/microservices), Protobuf, Docker Compose
+**Tech stack:** Python 3.12 (grpcio), Node.js 20 (NestJS 10 + TypeScript + @nestjs/microservices), Protobuf, Docker Compose, GitHub Actions, OCIR, OCI Compute / OKE
 
 ## Development Workflow
 
@@ -117,6 +126,13 @@ When working in this repository:
 |----------|---------|---------|-------------|
 | `USER_SERVICE_HOST` | api-gateway | `localhost:50051` | Python gRPC 서버 주소 |
 | `PORT` | api-gateway | `3000` | REST API 포트 |
+
+## CI/CD
+
+- **CI** (`.github/workflows/ci.yml`): PR/push 시 Python 빌드, NestJS 빌드, Docker 이미지 빌드 검증
+- **CD** (`.github/workflows/deploy.yml`): main push 시 OCIR에 이미지 푸시 → OCI Compute 또는 OKE에 배포
+- 배포 대상은 GitHub Variable `DEPLOY_TARGET` (`compute` | `oke`)로 제어
+- 배포 설정: `.env.deploy.example`을 `.env.deploy`로 복사 후 `scripts/setup-oci-secrets.sh` 실행
 
 ## Troubleshooting
 
