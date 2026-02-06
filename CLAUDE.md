@@ -16,11 +16,22 @@ One-Click-Publishing-/
 │   ├── server.py
 │   ├── requirements.txt
 │   └── Dockerfile
-├── nodejs-api-gateway/           # Node.js REST API 게이트웨이
+├── nodejs-api-gateway/           # NestJS API 게이트웨이 (TypeScript)
 │   ├── src/
-│   │   ├── index.js
-│   │   └── grpcClient.js
+│   │   ├── main.ts               # NestJS 부트스트랩
+│   │   ├── app.module.ts         # 루트 모듈
+│   │   ├── health.controller.ts  # 헬스체크
+│   │   └── user/                 # User 기능 모듈
+│   │       ├── user.module.ts
+│   │       ├── user.controller.ts
+│   │       ├── user.service.ts
+│   │       ├── user-service.interface.ts
+│   │       ├── grpc-client.options.ts
+│   │       └── dto/
+│   │           └── create-user.dto.ts
 │   ├── package.json
+│   ├── tsconfig.json
+│   ├── nest-cli.json
 │   └── Dockerfile
 ├── docker-compose.yml            # 서비스 오케스트레이션
 ├── README.md                     # 프로젝트 문서
@@ -28,7 +39,7 @@ One-Click-Publishing-/
 └── .git/
 ```
 
-**Tech stack:** Python 3.12 (grpcio), Node.js 20 (Express + @grpc/grpc-js), Protobuf, Docker Compose
+**Tech stack:** Python 3.12 (grpcio), Node.js 20 (NestJS 10 + TypeScript + @nestjs/microservices), Protobuf, Docker Compose
 
 ## Development Workflow
 
@@ -97,6 +108,8 @@ When working in this repository:
 | `docker compose down` | 전체 서비스 중지 |
 | `cd python-user-service && pip install -r requirements.txt` | Python 의존성 설치 |
 | `cd nodejs-api-gateway && npm install` | Node.js 의존성 설치 |
+| `cd nodejs-api-gateway && npm run build` | NestJS TypeScript 빌드 |
+| `cd nodejs-api-gateway && npm run start:dev` | NestJS 개발 모드 (watch) |
 
 ## Environment & Configuration
 
